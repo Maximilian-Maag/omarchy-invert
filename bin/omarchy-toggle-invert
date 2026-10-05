@@ -45,4 +45,4 @@ case $ACTION in
     ;;
 esac
 
-hyprctl eval "require('omarchy.invert').$call" >/dev/null
+hyprctl eval "require('Maximilian-Maag.invert').$call" >/dev/null
