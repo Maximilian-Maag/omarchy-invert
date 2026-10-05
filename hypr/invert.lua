@@ -1,13 +1,19 @@
--- Color inversion, for reading a window whose own contrast fights you.
+-- Color inversion, for reading windows whose own contrast fights you.
 --
 -- Hyprland exposes exactly one screen shader (decoration:screen_shader) and runs
 -- it over a whole output at the end of rendering, so both inversion modes have to
 -- share that single slot. This module owns it; nothing else writes screen_shader.
 --
--- Desktop mode inverts every pixel. Window mode inverts a specific pinned window's
--- rectangle. The pinned window is the one that was focused when the toggle was
--- pressed. Focus or workspace changes do not move the inversion to a new window —
--- they clear it, because the pinned window is no longer visible.
+-- Desktop mode inverts every pixel. Window mode inverts a set of explicitly
+-- pinned windows. Each window is toggled independently: pressing the shortcut on
+-- a window adds it to the set; pressing again removes it. Focus changes never
+-- affect the set — only explicit toggles do.
+--
+-- Multiple windows can be inverted simultaneously. The shader is regenerated with
+-- one rectangle clause per pinned visible window.
+--
+-- Turning both desktop and window mode on cancels the inversion inside each
+-- pinned window, leaving them normally-coloured on an inverted desktop.
 
 local paths = require("default.hypr.paths")
 
@@ -15,18 +21,14 @@ local state_dir = paths.state_home .. "/omarchy"
 local shader_path = state_dir .. "/invert.frag"
 local status_path = state_dir .. "/invert.status"
 
--- Hyprland has no window-moved or window-resized event, so a pinned window that
--- is dragged or resized only stays covered if its rectangle is re-read on a
--- timer. The timer runs only while window mode is on, and a tick that finds the
--- rectangle unchanged rewrites nothing.
 local poll_interval = 100
 
 local invert = {}
 
 local enabled = { desktop = false, window = false }
--- Address of the specific window pinned for inversion. Set when window mode is
--- turned on, cleared when it is turned off.
-local pinned_address = nil
+-- Set of window addresses currently pinned for inversion.
+-- { [address] = true, ... }
+local pinned = {}
 local polling = false
 local applied = nil
 local damage_tracking = nil
@@ -37,80 +39,88 @@ local function write_file(path, contents)
   if not file then
     return false
   end
-
   file:write(contents)
   file:close()
-
   return true
 end
 
--- Returns the rectangle for the pinned window, or nil if it is not currently
--- visible (different workspace, minimised, closed, or no window pinned).
---
--- On a transformed output Hyprland's framebuffer is rotated relative to the
--- layout coordinates a window reports, so a rectangle derived from them would
--- land somewhere else on screen. Rather than draw a misplaced box, window mode
--- inverts such an output whole: no rectangle, just the output id.
-local function pinned_target()
-  if not pinned_address then
-    return nil
+-- Returns true if there is at least one address in the pinned set.
+local function has_pinned()
+  for _ in pairs(pinned) do
+    return true
+  end
+  return false
+end
+
+-- Build the list of visible rectangles for all pinned windows.
+-- A window is visible if it is on the active workspace of its monitor and
+-- not hidden/minimised.
+local function pinned_targets()
+  if not has_pinned() then
+    return {}
   end
 
-  -- Find the pinned window by address among all open windows.
-  local window = nil
+  -- Index all open windows by address for O(1) lookup.
+  local by_address = {}
   for _, w in ipairs(hl.get_windows()) do
-    if w.address == pinned_address then
-      window = w
-      break
+    by_address[w.address] = w
+  end
+
+  local targets = {}
+  local closed = {}
+
+  for address in pairs(pinned) do
+    local window = by_address[address]
+
+    if not window then
+      -- Window was closed — remove from set.
+      closed[address] = true
+    elseif not window.hidden then
+      local monitor = window.monitor
+      if monitor then
+        local active_ws = monitor.active_workspace
+        -- Only include if on the currently visible workspace.
+        if not active_ws or not window.workspace
+            or window.workspace.id == active_ws.id then
+
+          if monitor.transform ~= 0 then
+            -- Rotated output: invert the whole output rather than misplace a rect.
+            targets[#targets + 1] = { output = monitor.id }
+          else
+            local width  = monitor.size.width  / monitor.scale
+            local height = monitor.size.height / monitor.scale
+            if width > 0 and height > 0 then
+              local t = { output = monitor.id }
+              t.left   = (window.at.x - monitor.position.x) / width
+              t.top    = (window.at.y - monitor.position.y) / height
+              t.right  = t.left + window.size.x / width
+              t.bottom = t.top  + window.size.y / height
+              targets[#targets + 1] = t
+            end
+          end
+        end
+      end
     end
   end
 
-  if not window then
-    -- Window was closed — turn off window mode.
+  -- Remove closed windows from the pin set.
+  for address in pairs(closed) do
+    pinned[address] = nil
+  end
+
+  -- If all pinned windows were closed, turn window mode off.
+  if not has_pinned() then
     enabled.window = false
-    pinned_address = nil
-    write_file(status_path, string.format("desktop=%s\nwindow=%s\n", tostring(enabled.desktop), tostring(enabled.window)))
-    return nil
+    write_file(status_path, string.format(
+      "desktop=%s\nwindow=%s\n",
+      tostring(enabled.desktop), tostring(enabled.window)
+    ))
   end
 
-  local monitor = window.monitor
-  if not monitor then
-    return nil
-  end
-
-  -- Only invert if the pinned window is on the currently visible workspace of
-  -- its monitor. If the user has switched away, the rectangle would land on
-  -- whatever is at those screen coordinates on the active workspace.
-  local active_ws = monitor.active_workspace
-  if active_ws and window.workspace and window.workspace.id ~= active_ws.id then
-    return nil
-  end
-
-  -- Hidden / minimised windows are not on screen.
-  if window.hidden then
-    return nil
-  end
-
-  local target = { output = monitor.id }
-  if monitor.transform ~= 0 then
-    return target
-  end
-
-  local width = monitor.size.width / monitor.scale
-  local height = monitor.size.height / monitor.scale
-  if width <= 0 or height <= 0 then
-    return target
-  end
-
-  target.left   = (window.at.x - monitor.position.x) / width
-  target.top    = (window.at.y - monitor.position.y) / height
-  target.right  = target.left + window.size.x / width
-  target.bottom = target.top  + window.size.y / height
-
-  return target
+  return targets
 end
 
-local function shader_source(target)
+local function shader_source(targets)
   local lines = {
     "#version 300 es",
     "precision highp float;",
@@ -125,23 +135,15 @@ local function shader_source(target)
     string.format("  bool inverted = %s;", enabled.desktop and "true" or "false"),
   }
 
-  if target then
+  for _, target in ipairs(targets) do
     if target.left then
-      table.insert(
-        lines,
-        string.format(
-          "  if (wl_output == %d && v_texcoord.x >= %.6f && v_texcoord.x <= %.6f && v_texcoord.y >= %.6f && v_texcoord.y <= %.6f) {",
-          target.output,
-          target.left,
-          target.right,
-          target.top,
-          target.bottom
-        )
-      )
+      table.insert(lines, string.format(
+        "  if (wl_output == %d && v_texcoord.x >= %.6f && v_texcoord.x <= %.6f && v_texcoord.y >= %.6f && v_texcoord.y <= %.6f) {",
+        target.output, target.left, target.right, target.top, target.bottom
+      ))
     else
       table.insert(lines, string.format("  if (wl_output == %d) {", target.output))
     end
-
     table.insert(lines, "    inverted = !inverted;")
     table.insert(lines, "  }")
   end
@@ -153,41 +155,35 @@ local function shader_source(target)
 end
 
 local function apply()
-  local target = nil
+  local targets = {}
   if enabled.window then
-    target = pinned_target()
+    targets = pinned_targets()
   end
 
-  if not enabled.desktop and not target then
+  if not enabled.desktop and #targets == 0 then
     if applied ~= nil then
       applied = nil
       hl.config({ decoration = { screen_shader = "" } })
     end
-
     return
   end
 
-  local source = shader_source(target)
+  local source = shader_source(targets)
   if source == applied then
     return
   end
 
   if write_file(shader_path, source) then
     applied = source
-    -- Hyprland recompiles the shader whenever the option is set, even when the
-    -- path has not changed, so rewriting this one file moves the rectangle.
     hl.config({ decoration = { screen_shader = shader_path } })
   end
 end
 
--- A self-rescheduling oneshot rather than a repeating timer: turning window mode
--- off simply stops the chain, so there is no timer handle to hold or cancel.
 local function poll()
   if not enabled.window then
     polling = false
     return
   end
-
   apply()
   hl.timer(poll, { timeout = poll_interval, type = "oneshot" })
 end
@@ -199,16 +195,6 @@ local function start_polling()
   end
 end
 
--- Hyprland runs the screen shader over damaged regions only, and nothing tells it
--- that the shader's own output changed. Undamaged areas keep the pixels the
--- previous shader produced, so the screen breaks into inverted and uninverted
--- fragments. Hyprland's answer for a screen shader that changes is to turn damage
--- tracking off, which redraws whole frames continuously and costs GPU time.
---
--- So it goes off for exactly as long as the screen can still be wrong: for as
--- long as window mode runs (the rectangle keeps moving when the window is dragged
--- or resized), and for a moment after any other switch. The user's own setting is
--- what gets put back.
 local settle_duration = 150
 
 local function suspend_damage_tracking()
@@ -235,7 +221,6 @@ local function settle_damage_tracking()
   restore_pending = true
   hl.timer(function()
     restore_pending = false
-
     if not enabled.window and not enabled.desktop then
       restore_damage_tracking()
     end
@@ -243,9 +228,15 @@ local function settle_damage_tracking()
 end
 
 local function write_status()
-  write_file(status_path, string.format("desktop=%s\nwindow=%s\n", tostring(enabled.desktop), tostring(enabled.window)))
+  write_file(status_path, string.format(
+    "desktop=%s\nwindow=%s\n",
+    tostring(enabled.desktop), tostring(enabled.window)
+  ))
 end
 
+-- set() for desktop mode works as before (on/off).
+-- set('window', true/false) clears the entire pin set when turning off.
+-- For per-window toggling use toggle('window') which pins/unpins the focused window.
 function invert.set(mode, value)
   if enabled[mode] == nil then
     return
@@ -254,12 +245,9 @@ function invert.set(mode, value)
   enabled[mode] = value and true or false
 
   if mode == "window" then
-    if enabled.window then
-      -- Pin to the window that is focused right now.
-      local w = hl.get_active_window()
-      pinned_address = w and w.address or nil
-    else
-      pinned_address = nil
+    if not enabled.window then
+      -- Turning window mode fully off clears all pins.
+      for k in pairs(pinned) do pinned[k] = nil end
     end
   end
 
@@ -269,39 +257,50 @@ function invert.set(mode, value)
   write_status()
 end
 
+-- toggle('window'): pins or unpins the currently focused window.
+--   - If the focused window is already pinned → unpins it.
+--   - If the focused window is not pinned → pins it and enables window mode.
+--   - Focus on other windows is never affected.
+--
+-- toggle('desktop'): flips desktop mode on/off as before.
 function invert.toggle(mode)
   if enabled[mode] == nil then
     return
   end
 
-  -- For window mode: if already on but the focused window has changed,
-  -- re-pin to the new window rather than turning off. This way one press
-  -- always means "invert this window", not "toggle the previous one off".
-  -- Pressing the shortcut on the same already-inverted window turns it off.
-  if mode == "window" and enabled.window then
+  if mode == "window" then
     local w = hl.get_active_window()
-    local focused_address = w and w.address or nil
-    if focused_address and focused_address ~= pinned_address then
-      -- Move pin to the newly focused window.
-      pinned_address = focused_address
-      start_polling()
-      apply()
-      settle_damage_tracking()
-      write_status()
+    if not w then
       return
     end
+
+    if pinned[w.address] then
+      -- Unpin this window.
+      pinned[w.address] = nil
+      if not has_pinned() then
+        enabled.window = false
+      end
+    else
+      -- Pin this window.
+      pinned[w.address] = true
+      enabled.window = true
+    end
+
+    start_polling()
+    apply()
+    settle_damage_tracking()
+    write_status()
+    return
   end
 
+  -- Desktop mode: plain toggle.
   invert.set(mode, not enabled[mode])
 end
 
--- Window events: only re-apply for move/resize of the pinned window.
--- workspace.active fires when the user switches workspace — re-apply so the
--- shader clears if the pinned window is no longer visible.
-hl.on("window.active", apply)
-hl.on("window.fullscreen", apply)
+hl.on("window.active",         apply)
+hl.on("window.fullscreen",     apply)
 hl.on("monitor.layout_changed", apply)
-hl.on("workspace.active", apply)
+hl.on("workspace.active",      apply)
 
 write_status()
 
