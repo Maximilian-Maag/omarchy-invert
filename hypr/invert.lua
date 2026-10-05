@@ -194,7 +194,7 @@ end
 local function settle_damage_tracking()
   suspend_damage_tracking()
 
-  if enabled.window or restore_pending then
+  if enabled.window or enabled.desktop or restore_pending then
     return
   end
 
@@ -202,7 +202,7 @@ local function settle_damage_tracking()
   hl.timer(function()
     restore_pending = false
 
-    if not enabled.window then
+    if not enabled.window and not enabled.desktop then
       restore_damage_tracking()
     end
   end, { timeout = settle_duration, type = "oneshot" })
