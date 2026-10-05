@@ -274,6 +274,24 @@ function invert.toggle(mode)
     return
   end
 
+  -- For window mode: if already on but the focused window has changed,
+  -- re-pin to the new window rather than turning off. This way one press
+  -- always means "invert this window", not "toggle the previous one off".
+  -- Pressing the shortcut on the same already-inverted window turns it off.
+  if mode == "window" and enabled.window then
+    local w = hl.get_active_window()
+    local focused_address = w and w.address or nil
+    if focused_address and focused_address ~= pinned_address then
+      -- Move pin to the newly focused window.
+      pinned_address = focused_address
+      start_polling()
+      apply()
+      settle_damage_tracking()
+      write_status()
+      return
+    end
+  end
+
   invert.set(mode, not enabled[mode])
 end
 
