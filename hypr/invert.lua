@@ -4,9 +4,10 @@
 -- it over a whole output at the end of rendering, so both inversion modes have to
 -- share that single slot. This module owns it; nothing else writes screen_shader.
 --
--- Desktop mode inverts every pixel. Window mode inverts the focused window's
--- rectangle. Turning both on cancels the inversion inside the focused window,
--- which leaves that one window untouched against an otherwise inverted desktop.
+-- Desktop mode inverts every pixel. Window mode inverts a specific pinned window's
+-- rectangle. The pinned window is the one that was focused when the toggle was
+-- pressed. Focus or workspace changes do not move the inversion to a new window —
+-- they clear it, because the pinned window is no longer visible.
 
 local paths = require("default.hypr.paths")
 
@@ -14,7 +15,7 @@ local state_dir = paths.state_home .. "/omarchy"
 local shader_path = state_dir .. "/invert.frag"
 local status_path = state_dir .. "/invert.status"
 
--- Hyprland has no window-moved or window-resized event, so a focused window that
+-- Hyprland has no window-moved or window-resized event, so a pinned window that
 -- is dragged or resized only stays covered if its rectangle is re-read on a
 -- timer. The timer runs only while window mode is on, and a tick that finds the
 -- rectangle unchanged rewrites nothing.
@@ -23,6 +24,9 @@ local poll_interval = 100
 local invert = {}
 
 local enabled = { desktop = false, window = false }
+-- Address of the specific window pinned for inversion. Set when window mode is
+-- turned on, cleared when it is turned off.
+local pinned_address = nil
 local polling = false
 local applied = nil
 local damage_tracking = nil
@@ -40,13 +44,32 @@ local function write_file(path, contents)
   return true
 end
 
+-- Returns the rectangle for the pinned window, or nil if it is not currently
+-- visible (different workspace, minimised, closed, or no window pinned).
+--
 -- On a transformed output Hyprland's framebuffer is rotated relative to the
 -- layout coordinates a window reports, so a rectangle derived from them would
 -- land somewhere else on screen. Rather than draw a misplaced box, window mode
 -- inverts such an output whole: no rectangle, just the output id.
-local function focused_target()
-  local window = hl.get_active_window()
+local function pinned_target()
+  if not pinned_address then
+    return nil
+  end
+
+  -- Find the pinned window by address among all open windows.
+  local window = nil
+  for _, w in ipairs(hl.get_windows()) do
+    if w.address == pinned_address then
+      window = w
+      break
+    end
+  end
+
   if not window then
+    -- Window was closed — turn off window mode.
+    enabled.window = false
+    pinned_address = nil
+    write_file(status_path, string.format("desktop=%s\nwindow=%s\n", tostring(enabled.desktop), tostring(enabled.window)))
     return nil
   end
 
@@ -55,13 +78,16 @@ local function focused_target()
     return nil
   end
 
-  -- The screen shader runs over the physical output regardless of which
-  -- workspace is visible. If the focused window is on a workspace that is
-  -- not currently shown on its monitor (e.g. the user switched away), the
-  -- rectangle would invert that same screen region on the active workspace.
-  -- Clear the shader instead.
+  -- Only invert if the pinned window is on the currently visible workspace of
+  -- its monitor. If the user has switched away, the rectangle would land on
+  -- whatever is at those screen coordinates on the active workspace.
   local active_ws = monitor.active_workspace
   if active_ws and window.workspace and window.workspace.id ~= active_ws.id then
+    return nil
+  end
+
+  -- Hidden / minimised windows are not on screen.
+  if window.hidden then
     return nil
   end
 
@@ -76,10 +102,10 @@ local function focused_target()
     return target
   end
 
-  target.left = (window.at.x - monitor.position.x) / width
-  target.top = (window.at.y - monitor.position.y) / height
-  target.right = target.left + window.size.x / width
-  target.bottom = target.top + window.size.y / height
+  target.left   = (window.at.x - monitor.position.x) / width
+  target.top    = (window.at.y - monitor.position.y) / height
+  target.right  = target.left + window.size.x / width
+  target.bottom = target.top  + window.size.y / height
 
   return target
 end
@@ -129,7 +155,7 @@ end
 local function apply()
   local target = nil
   if enabled.window then
-    target = focused_target()
+    target = pinned_target()
   end
 
   if not enabled.desktop and not target then
@@ -176,14 +202,12 @@ end
 -- Hyprland runs the screen shader over damaged regions only, and nothing tells it
 -- that the shader's own output changed. Undamaged areas keep the pixels the
 -- previous shader produced, so the screen breaks into inverted and uninverted
--- fragments — as windows are focused and typed into while the rectangle moves,
--- and on the frame a mode is switched at all. Hyprland's answer for a screen
--- shader that changes is to turn damage tracking off, which redraws whole frames
--- continuously and costs GPU time.
+-- fragments. Hyprland's answer for a screen shader that changes is to turn damage
+-- tracking off, which redraws whole frames continuously and costs GPU time.
 --
 -- So it goes off for exactly as long as the screen can still be wrong: for as
--- long as window mode runs, since its rectangle keeps moving, and otherwise just
--- long enough for the new shader to cover the screen. The user's own setting is
+-- long as window mode runs (the rectangle keeps moving when the window is dragged
+-- or resized), and for a moment after any other switch. The user's own setting is
 -- what gets put back.
 local settle_duration = 150
 
@@ -229,6 +253,16 @@ function invert.set(mode, value)
 
   enabled[mode] = value and true or false
 
+  if mode == "window" then
+    if enabled.window then
+      -- Pin to the window that is focused right now.
+      local w = hl.get_active_window()
+      pinned_address = w and w.address or nil
+    else
+      pinned_address = nil
+    end
+  end
+
   start_polling()
   apply()
   settle_damage_tracking()
@@ -243,12 +277,13 @@ function invert.toggle(mode)
   invert.set(mode, not enabled[mode])
 end
 
--- A newly focused window needs the rectangle moved before the next poll tick, so
--- the eye never catches the old one. Fullscreening keeps the same window focused
--- but resizes it, and a monitor coming or going renumbers outputs.
+-- Window events: only re-apply for move/resize of the pinned window.
+-- workspace.active fires when the user switches workspace — re-apply so the
+-- shader clears if the pinned window is no longer visible.
 hl.on("window.active", apply)
 hl.on("window.fullscreen", apply)
 hl.on("monitor.layout_changed", apply)
+hl.on("workspace.active", apply)
 
 write_status()
 
