@@ -55,6 +55,16 @@ local function focused_target()
     return nil
   end
 
+  -- The screen shader runs over the physical output regardless of which
+  -- workspace is visible. If the focused window is on a workspace that is
+  -- not currently shown on its monitor (e.g. the user switched away), the
+  -- rectangle would invert that same screen region on the active workspace.
+  -- Clear the shader instead.
+  local active_ws = monitor.active_workspace
+  if active_ws and window.workspace and window.workspace.id ~= active_ws.id then
+    return nil
+  end
+
   local target = { output = monitor.id }
   if monitor.transform ~= 0 then
     return target
