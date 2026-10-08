@@ -203,6 +203,21 @@ def run_target(repo, target, cfg, tmp_root, dry_run=False, log=print):
     copied = work / "repo" / target["path"]
     original = copied.read_bytes()
 
+    # Baseline: the target's tests must pass BEFORE mutating, or every mutant would
+    # be counted as killed and the target would report a fake perfect score.
+    if not dry_run:
+        try:
+            base = subprocess.run(target["tests"], cwd=str(work / "repo"),
+                                  capture_output=True, text=True, timeout=cfg["timeout"])
+        except subprocess.TimeoutExpired:
+            return {"name": target["path"], "lang": lang, "mutants": [],
+                    "error": "baseline test run timed out"}
+        if base.returncode != 0:
+            return {"name": target["path"], "lang": lang, "mutants": [],
+                    "error": "baseline tests fail on unmutated code (a mutation score "
+                             "would be meaningless): " +
+                             (base.stdout + base.stderr).strip().splitlines()[-1][:160]}
+
     results = []
     for offset, end, replacement, label, line_no in mutants:
         # span() returns (start, END) — absolute offsets, not a length. Slicing with
