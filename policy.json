@@ -9,5 +9,32 @@
     "artifacts": {},
     "secrets": {},
     "abs_path": {}
+  },
+  "tests": {
+    "kinds": [
+      "unit",
+      "regression",
+      "integration",
+      "shell"
+    ],
+    "integration_applicable": true,
+    "files": {
+      "unit": "tests/test_unit_*.py",
+      "regression": "tests/test_regression_*.py",
+      "integration": "tests/test_integration_*.py",
+      "shell": "tests/shell/test_*.sh"
+    },
+    "runner": "tools/run_tests.sh",
+    "mutator": "tools/mutator.py",
+    "mutation_config": "tests/mutation.json",
+    "ci": ".github/workflows/test.yml",
+    "note": "four kinds (unit, regression, integration, shell) + policy as code; see tools/run_tests.sh",
+    "min_kill_rate": 0.8,
+    "source_globs": [
+      "bin/*",
+      "hypr/*",
+      "tools/*.py",
+      "install.sh"
+    ]
   }
 }

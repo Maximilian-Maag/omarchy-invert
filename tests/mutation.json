@@ -1,0 +1,38 @@
+{
+  "_about": [
+    "Mutation-test targets for this plugin. Each target names the file to mutate and",
+    "the test command that must notice a change (the fast suite that covers it).",
+    "Run with tools/mutator.py, or as part of tools/run_tests.sh.",
+    "min_kill_rate is the floor: below it the run fails, and a target that yields no",
+    "mutants at all fails too, so a mutation pass can never be green over nothing.",
+    "per_operator caps how many occurrences of each operator are mutated (determinism",
+    "and runtime); raise it for a deeper nightly run via --max-rate/--only.",
+    "exempt lists shipped sources that are deliberately not mutated, each with a reason;",
+    "policy_check's tests/no-gaps rule requires every source_globs match to be accounted",
+    "for here or be a target."
+  ],
+  "min_kill_rate": 0.85,
+  "timeout": 120,
+  "per_operator": 2,
+  "targets": [
+    {
+      "path": "bin/omarchy-toggle-invert",
+      "lang": "shell",
+      "tests": ["bash", "tests/shell/test_toggle_invert.sh"]
+    }
+  ],
+  "exempt": [
+    {
+      "path": "install.sh",
+      "reason": "privileged installer (sudo/pkexec, /usr/local/bin); mutating it meaningfully needs a root harness, wiring is verified by review"
+    },
+    {
+      "path": "tools/policy_check.py",
+      "reason": "vendored checker, byte-identical to omarchy-qutebrowser's; covered by that repo's mutation suite"
+    },
+    {
+      "path": "tools/mutator.py",
+      "reason": "vendored mutation runner, byte-identical to omarchy-qutebrowser's; covered by that repo's mutation suite"
+    }
+  ]
+}

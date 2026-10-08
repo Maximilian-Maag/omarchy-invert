@@ -2,24 +2,39 @@
   "schemaVersion": 1,
   "id": "Maximilian-Maag.invert",
   "name": "Invert",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "Maximilian-Maag",
   "license": "MIT",
-  "description": "Color inversion for Omarchy — invert the focused window or the whole desktop via Super+Ctrl+U / Super+Ctrl+Alt+U.",
-  "kinds": ["hyprland-module", "cli"],
+  "description": "Color inversion for Omarchy \u2014 invert the focused window or the whole desktop via Super+Ctrl+U / Super+Ctrl+Alt+U.",
+  "kinds": [
+    "hyprland-module",
+    "cli"
+  ],
   "activation": "auto",
   "entryPoints": {},
   "omarchy_meta": {
     "installPaths": [
-      { "source": "hypr/invert.lua",        "target": "hypr/invert.lua" },
-      { "source": "bin/omarchy-toggle-invert", "target": "bin/omarchy-toggle-invert" }
+      {
+        "source": "hypr/invert.lua",
+        "target": "hypr/invert.lua"
+      },
+      {
+        "source": "bin/omarchy-toggle-invert",
+        "target": "bin/omarchy-toggle-invert"
+      }
     ],
     "hyprland": {
       "require": "omarchy.invert"
     },
     "bindings": [
-      { "keys": "SUPER + CTRL + U",         "description": "Toggle focused window color inversion" },
-      { "keys": "SUPER + CTRL + ALT + U",   "description": "Toggle desktop color inversion" }
+      {
+        "keys": "SUPER + CTRL + U",
+        "description": "Toggle focused window color inversion"
+      },
+      {
+        "keys": "SUPER + CTRL + ALT + U",
+        "description": "Toggle desktop color inversion"
+      }
     ]
   }
 }
