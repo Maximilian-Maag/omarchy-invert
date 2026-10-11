@@ -1,7 +1,7 @@
 # omarchy-invert
 
-Colour effects for [Omarchy](https://omarchy.org/) — cycle the focused window or
-the whole desktop through colour inversion and a maximum-contrast
+Color effects for [Omarchy](https://omarchy.org/) — cycle the focused window or
+the whole desktop through color inversion and a maximum-contrast
 yellow-on-black mode, without leaving the keyboard.
 
 Each scope holds one of three **effects** and the shortcut cycles through them:
@@ -60,14 +60,14 @@ fragColor = vec4(rgb, pixel.a);
 The two scopes combine as *the pinned window's effect wins inside its own
 rectangle; the desktop effect applies everywhere else*. One special case survives
 from the original plugin because it is genuinely useful: desktop `invert` +
-window `invert` cancel, leaving that window normally-coloured on an otherwise
+window `invert` cancel, leaving that window normally-colored on an otherwise
 inverted desktop (the combination for reading one photo or video on a screen you
 have otherwise darkened). Contrast always wins — it is the accessibility effect
 and should never silently disappear.
 
 ### The contrast effect
 
-`contrast` is the accessibility mode. It discards colour and maps luminance to
+`contrast` is the accessibility mode. It discards color and maps luminance to
 yellow on black: `smoothstep(0.15, 0.85, luma)` compresses the luminance into
 0–1 with an S-curve, so mid-tones are pushed apart, then that value becomes the
 yellow channel — bright pixels glow yellow, dark pixels go black. The band

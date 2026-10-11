@@ -5,7 +5,7 @@
   "version": "1.2.0",
   "author": "Maximilian-Maag",
   "license": "MIT",
-  "description": "Colour effects for Omarchy \u2014 cycle the focused window or the whole desktop through colour inversion and a maximum-contrast yellow-on-black mode via Super+Ctrl+U / Super+Ctrl+Alt+U.",
+  "description": "Color effects for Omarchy \u2014 cycle the focused window or the whole desktop through color inversion and a maximum-contrast yellow-on-black mode via Super+Ctrl+U / Super+Ctrl+Alt+U.",
   "kinds": [
     "hyprland-module",
     "cli"

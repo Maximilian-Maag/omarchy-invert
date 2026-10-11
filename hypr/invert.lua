@@ -1,4 +1,4 @@
--- Colour effects, for reading windows whose own contrast fights you.
+-- Color effects, for reading windows whose own contrast fights you.
 --
 -- Three effects are available and they share Hyprland's single screen shader
 -- (decoration:screen_shader), which runs over a whole output at the end of
@@ -18,7 +18,7 @@
 -- The scopes combine as follows. A pinned window's effect wins inside its own
 -- rectangle; everywhere else on the output the desktop effect applies. One
 -- special case is kept from the original plugin because it is genuinely useful:
--- desktop invert + window invert cancel, leaving that window normally-coloured
+-- desktop invert + window invert cancel, leaving that window normally-colored
 -- on an otherwise inverted desktop. Contrast always wins (it is the
 -- accessibility effect and should never silently disappear).
 --

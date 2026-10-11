@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# omarchy:summary=Cycle colour effects (invert / high-contrast) for the desktop or the focused window
+# omarchy:summary=Cycle color effects (invert / high-contrast) for the desktop or the focused window
 # omarchy:args=<desktop|window> [on|off|invert|contrast|toggle|--status]
 # omarchy:examples=omarchy toggle invert desktop | omarchy toggle invert window contrast
 

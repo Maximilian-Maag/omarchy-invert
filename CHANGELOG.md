@@ -6,7 +6,7 @@ All notable changes to omarchy-invert are documented here.
 
 ### Added
 - A **high-contrast effect** (yellow on black), for maximum readability when
-  reading is the goal rather than colour fidelity. Luminance is stretched by an
+  reading is the goal rather than color fidelity. Luminance is stretched by an
   S-curve (0.15–0.85) and mapped to yellow on black, so bright pixels become
   yellow and dark pixels black.
 - The scopes now each hold an **effect** (`off`, `invert`, `contrast`) instead of
@@ -20,7 +20,7 @@ All notable changes to omarchy-invert are documented here.
 - Combining scopes is now "the pinned window's effect wins inside its own
   rectangle; the desktop effect applies everywhere else", with one kept special
   case: desktop `invert` + window `invert` still cancel, so you can keep one
-  window normally-coloured on an inverted desktop.
+  window normally-colored on an inverted desktop.
 - `--status` JSON gained an `effect` field (`{"mode", "effect", "enabled"}`); the
   live status file now stores effect names. A pre-1.2 boolean status file is
   still read correctly (`true` → `invert`).
