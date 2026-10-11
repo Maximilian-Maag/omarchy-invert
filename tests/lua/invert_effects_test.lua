@@ -68,9 +68,14 @@ local windows = {}
 local active = nil
 local shader_calls = {}   -- every decoration.screen_shader value written
 local damage_calls = {}   -- every debug.damage_tracking value written
+local border_calls = {}   -- every general.col.active_border value written
 local damage_current = 2
 local timers = {}
 local handlers = {}
+
+-- Stand-in for the theme's active border: a gradient table, exactly the shape
+-- Hyprland's hl.get_config returns (colors as AARRGGBB hex strings + angle).
+local THEME_BORDER = { angle = 45.0, colors = { "0xEE26A269", "0xEE2EC27E" } }
 
 hl = {
   get_windows = function() return windows end,
@@ -83,9 +88,13 @@ hl = {
       damage_current = t.debug.damage_tracking
       damage_calls[#damage_calls + 1] = t.debug.damage_tracking
     end
+    if t.general and t.general.col and t.general.col.active_border ~= nil then
+      border_calls[#border_calls + 1] = t.general.col.active_border
+    end
   end,
   get_config = function(name)
     if name == "debug.damage_tracking" then return damage_current end
+    if name == "general:col.active_border" then return THEME_BORDER end
     return nil
   end,
   timer = function(fn) timers[#timers + 1] = fn end,
@@ -145,6 +154,7 @@ local function reset()
   active = nil
   shader_calls = {}
   damage_calls = {}
+  border_calls = {}
   damage_current = 2
   timers = {}
   handlers = {}
@@ -326,6 +336,38 @@ do
   local inv = reset()
   inv.cycle("window")
   check(last_shader() == nil, "cycling with no focused window does nothing")
+end
+
+-- 12. Contrast forces a bright-yellow focused border and restores the theme's.
+do
+  local inv = reset()
+  inv.set("desktop", "contrast")
+  check(#border_calls == 1 and border_calls[1] == "rgba(ffff00ff)",
+        "desktop contrast forces the active border to bright yellow")
+
+  inv.set("desktop", "off")
+  check(#border_calls == 2 and border_calls[2] == THEME_BORDER,
+        "leaving contrast restores the theme's active border")
+end
+
+-- 13. A contrast-pinned window forces the border too.
+do
+  local inv = reset()
+  windows = { mkwin("0xaa", 0, 0, 400, 300) }
+  active = windows[1]
+  inv.set("window", "contrast")
+  check(#border_calls == 1 and border_calls[1] == "rgba(ffff00ff)",
+        "a contrast window forces the active border to bright yellow")
+  inv.set("window", "off")
+  check(#border_calls == 2 and border_calls[2] == THEME_BORDER,
+        "unpinning the last contrast window restores the theme's border")
+end
+
+-- 14. Invert leaves the border alone (it inverts to a visible complement).
+do
+  local inv = reset()
+  inv.set("desktop", "invert")
+  check(#border_calls == 0, "invert leaves the active border alone")
 end
 
 -- ── summary ─────────────────────────────────────────────────────────────────

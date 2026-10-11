@@ -98,6 +98,44 @@ local function desktop_on()
   return desktop_effect ~= "off"
 end
 
+-- A focused window's border comes from the theme, and a mid-luminance theme
+-- accent (Omarchy's active border is a green gradient at ~0.5 luminance) maps to
+-- a dull olive under the contrast effect rather than a bright yellow. While any
+-- contrast effect is live the focused border is forced to full yellow, which the
+-- shader — seeing a full-luminance colour — keeps as pure yellow; the theme's
+-- own border (gradient or solid, whatever it is) is put back when the last
+-- contrast effect goes away.
+local saved_border = nil
+local border_forced = false
+
+local function contrast_active()
+  if desktop_effect == "contrast" then
+    return true
+  end
+  for _, effect in pairs(pinned) do
+    if effect == "contrast" then
+      return true
+    end
+  end
+  return false
+end
+
+local function sync_border()
+  local want = contrast_active()
+
+  if want and not border_forced then
+    saved_border = hl.get_config("general:col.active_border")
+    hl.config({ general = { col = { active_border = "rgba(ffff00ff)" } } })
+    border_forced = true
+  elseif not want and border_forced then
+    if saved_border ~= nil then
+      hl.config({ general = { col = { active_border = saved_border } } })
+    end
+    saved_border = nil
+    border_forced = false
+  end
+end
+
 -- Build the list of visible rectangles for all pinned windows, each carrying
 -- the already-resolved integer effect for its rectangle.
 -- A window is visible if it is on the active workspace of its monitor and
@@ -205,6 +243,8 @@ local function shader_source(targets, desktop)
 end
 
 local function apply()
+  sync_border()
+
   local targets = {}
   if has_pinned() then
     targets = pinned_targets()
