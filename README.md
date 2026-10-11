@@ -149,6 +149,8 @@ MIT
 Policies that only live in prose drift. This repository enforces its own in
 `tools/policy_check.py` (dependency-free), configured by `policy.json`:
 
+    make test              # every test kind CI runs (policy, unit, regression, integration, lua, shell, mutation)
+    make check             # the same minus the slow mutation pass
     python3 tools/policy_check.py            # every tracked file
     python3 tools/policy_check.py --changed  # only what you changed (pre-commit)
     python3 tools/policy_check.py --ci       # changed vs the base branch (CI)
