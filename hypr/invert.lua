@@ -230,11 +230,17 @@ local function shader_source(targets, desktop)
   table.insert(lines, "  if (mode == 1) {")
   table.insert(lines, "    rgb = vec3(1.0) - rgb;")
   table.insert(lines, "  } else if (mode == 2) {")
-  table.insert(lines, "    float luma = dot(rgb, vec3(0.2126, 0.7152, 0.0722));")
+  table.insert(lines, "    vec3 lw = vec3(0.2126, 0.7152, 0.0722);")
+  table.insert(lines, "    float luma = dot(rgb, lw);")
+  table.insert(lines, "    vec2 texel = 1.0 / vec2(textureSize(tex, 0));")
+  table.insert(lines, "    float ln = dot(texture(tex, v_texcoord - vec2(3.0 * texel.x, 0.0)).rgb, lw);")
+  table.insert(lines, "    float rn = dot(texture(tex, v_texcoord + vec2(3.0 * texel.x, 0.0)).rgb, lw);")
   table.insert(lines, string.format(
-    "    rgb = vec3(smoothstep(%.2f, %.2f, luma)) * vec3(1.0, 1.0, 0.0);",
-    CONTRAST_LO, CONTRAST_HI
+    "    float base = smoothstep(%.2f, %.2f, luma);", CONTRAST_LO, CONTRAST_HI
   ))
+  table.insert(lines, "    float bg = 0.5 * (ln + rn);")
+  table.insert(lines, "    float outl = (abs(ln - rn) < 0.06 && abs(luma - bg) > 0.06) ? (bg > 0.5 ? 0.0 : 1.0) : base;")
+  table.insert(lines, "    rgb = vec3(outl) * vec3(1.0, 1.0, 0.0);")
   table.insert(lines, "  }")
   table.insert(lines, "  fragColor = vec4(rgb, pixel.a);")
   table.insert(lines, "}")

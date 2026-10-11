@@ -75,6 +75,22 @@ yellow channel — bright pixels glow yellow, dark pixels go black. The band
 chrome, soft enough to keep photos and anti-aliased edges from collapsing into
 two-tone blocks.
 
+Two focus indicators get help, because a plain luminance mapping renders both as
+a dull olive:
+
+- **The focused-window border.** Omarchy's active border is a green gradient at
+  ~0.5 luminance, which maps to a muddy olive. While any contrast effect is live
+  the module forces the active border to full yellow (which the shader keeps as
+  pure yellow) and restores the theme's own border — gradient or solid — as soon
+  as the last contrast effect goes away.
+- **The blinking text caret.** On a light (white → yellow) field a light caret
+  went yellow-on-yellow and vanished. The shader detects thin vertical strokes
+  (the caret, and text stems) by comparing each pixel to its horizontal
+  neighbours and snaps them to the *opposite* extreme of their background: black
+  on a yellow field, yellow on a black one. Plain areas, text and images are left
+  alone.
+
+
 
 ### Technical constraints
 

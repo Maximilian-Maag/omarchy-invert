@@ -191,6 +191,8 @@ do
   contains(s, "int mode = 2;", "cycle 2: desktop -> contrast selects mode 2")
   contains(s, "smoothstep(0.15, 0.85, luma)", "cycle 2: shader stretches luminance")
   contains(s, "vec3(1.0, 1.0, 0.0)", "cycle 2: shader paints yellow-on-black")
+  contains(s, "textureSize(tex, 0)", "cycle 2: contrast samples neighbours")
+  contains(s, "abs(ln - rn)", "cycle 2: contrast snaps thin vertical features to the opposite extreme")
   contains(status_text(), "desktop=contrast", "cycle 2: status desktop=contrast")
 
   inv.cycle("desktop")

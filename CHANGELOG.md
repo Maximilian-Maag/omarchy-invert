@@ -2,6 +2,22 @@
 
 All notable changes to omarchy-invert are documented here.
 
+## [1.2.1] — 2026-10-11
+
+### Fixed
+- **Focused-window border in contrast mode.** A theme accent at mid luminance
+  (Omarchy's active border is a green gradient at ~0.5) mapped to a dull olive,
+  so the focused window was hard to pick out. While any contrast effect is live
+  the active border is forced to full yellow — which the shader keeps as pure
+  yellow — and the theme's own border (gradient or solid) is saved and restored
+  when the last contrast effect goes away. Invert is untouched.
+- **Blinking text caret in contrast mode.** On a light (white → yellow) field a
+  light caret went yellow-on-yellow and vanished. The contrast shader now detects
+  thin vertical strokes (the caret, and text stems) by comparing each pixel to
+  its horizontal neighbours and snaps them to the *opposite* extreme of their
+  background: black on a yellow field, yellow on a black one. Plain areas, text
+  and images are unchanged.
+
 ## [1.2.0] — 2026-10-11
 
 ### Added
