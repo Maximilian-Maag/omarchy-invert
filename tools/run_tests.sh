@@ -1,7 +1,7 @@
 #!/bin/bash
 # Every test kind this repository promises, in escalating cost order.
 #
-#   policy as code -> unit -> regression -> integration -> js -> shell -> mutation
+#   policy as code -> unit -> regression -> integration -> js -> lua -> shell -> mutation
 #
 # Locally: `tools/run_tests.sh`. In CI: .github/workflows/test.yml.
 # `SKIP_MUTATION=1` runs everything but the mutation pass (it is the slow one);
@@ -50,6 +50,24 @@ if want js; then
     for f in "${js_files[@]}"; do
       run "js tests: $(basename "$f")" node --test "$f"
     done
+  fi
+fi
+
+if want lua; then
+  shopt -s nullglob
+  lua_files=(tests/lua/*_test.lua)
+  if [ ${#lua_files[@]} -gt 0 ]; then
+    LUA_BIN=""
+    for c in lua lua5.4 lua5.3 luajit; do
+      if command -v "$c" >/dev/null 2>&1; then LUA_BIN="$c"; break; fi
+    done
+    if [ -z "$LUA_BIN" ]; then
+      run "lua tests" bash -c 'echo "no lua interpreter found (tried lua, lua5.4, lua5.3, luajit)"; exit 1'
+    else
+      for f in "${lua_files[@]}"; do
+        run "lua tests: $(basename "$f")" "$LUA_BIN" "$f" "$PWD"
+      done
+    fi
   fi
 fi
 

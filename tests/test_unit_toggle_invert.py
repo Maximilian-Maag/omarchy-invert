@@ -52,15 +52,19 @@ class ToggleInvertUnitCase(unittest.TestCase):
         (self.state / "omarchy/invert.status").write_text(text)
 
     # ── dispatch ──────────────────────────────────────────────────────────
-    def test_every_mode_and_action_emits_the_module_call(self):
+    def test_every_scope_and_action_emits_the_module_call(self):
         cases = [
-            (("desktop", "on"), "set('desktop', true)"),
-            (("desktop", "off"), "set('desktop', false)"),
-            (("desktop", "toggle"), "toggle('desktop')"),
-            (("window", "on"), "set('window', true)"),
-            (("window", "off"), "set('window', false)"),
-            (("window", "toggle"), "toggle('window')"),
-            (("window",), "toggle('window')"),          # default action is toggle
+            (("desktop", "on"), "set('desktop', 'invert')"),
+            (("desktop", "off"), "set('desktop', 'off')"),
+            (("desktop", "invert"), "set('desktop', 'invert')"),
+            (("desktop", "contrast"), "set('desktop', 'contrast')"),
+            (("desktop", "toggle"), "cycle('desktop')"),
+            (("window", "on"), "set('window', 'invert')"),
+            (("window", "off"), "set('window', 'off')"),
+            (("window", "invert"), "set('window', 'invert')"),
+            (("window", "contrast"), "set('window', 'contrast')"),
+            (("window", "toggle"), "cycle('window')"),
+            (("window",), "cycle('window')"),          # default action is toggle
         ]
         for args, expected in cases:
             with self.subTest(args=args):
@@ -94,27 +98,40 @@ class ToggleInvertUnitCase(unittest.TestCase):
         self.assertEqual(self.calls(), "")
 
     # ── status readout ────────────────────────────────────────────────────
-    def test_status_with_no_file_reports_disabled(self):
+    def test_status_with_no_file_reports_off(self):
         proc = self.run_cli("desktop", "--status")
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertEqual(json.loads(proc.stdout), {"mode": "desktop", "enabled": False})
+        self.assertEqual(json.loads(proc.stdout),
+                         {"mode": "desktop", "effect": "off", "enabled": False})
         self.assertEqual(self.calls(), "")
 
     def test_status_does_not_create_the_state_directory(self):
         self.assertEqual(self.run_cli("window", "--status").returncode, 0)
         self.assertFalse((self.state / "omarchy").exists())
 
-    def test_status_reads_only_the_requested_mode(self):
-        self.write_status("desktop=false\nwindow=true\n")
+    def test_status_reads_only_the_requested_scope(self):
+        self.write_status("desktop=off\nwindow=contrast\n")
         desktop = json.loads(self.run_cli("desktop", "--status").stdout)
         window = json.loads(self.run_cli("window", "--status").stdout)
-        self.assertEqual(desktop, {"mode": "desktop", "enabled": False})
-        self.assertEqual(window, {"mode": "window", "enabled": True})
+        self.assertEqual(desktop,
+                         {"mode": "desktop", "effect": "off", "enabled": False})
+        self.assertEqual(window,
+                         {"mode": "window", "effect": "contrast", "enabled": True})
 
-    def test_status_true_when_the_mode_line_is_true(self):
+    def test_status_reports_each_effect(self):
+        for effect, enabled in (("invert", True), ("contrast", True), ("off", False)):
+            with self.subTest(effect=effect):
+                self.write_status(f"desktop={effect}\nwindow=off\n")
+                self.assertEqual(json.loads(self.run_cli("desktop", "--status").stdout),
+                                 {"mode": "desktop", "effect": effect, "enabled": enabled})
+
+    def test_status_accepts_a_pre_1_2_boolean_file(self):
+        # Older installs wrote desktop=true/false; read them as invert/off.
         self.write_status("desktop=true\nwindow=false\n")
         self.assertEqual(json.loads(self.run_cli("desktop", "--status").stdout),
-                         {"mode": "desktop", "enabled": True})
+                         {"mode": "desktop", "effect": "invert", "enabled": True})
+        self.assertEqual(json.loads(self.run_cli("window", "--status").stdout),
+                         {"mode": "window", "effect": "off", "enabled": False})
 
 
 if __name__ == "__main__":

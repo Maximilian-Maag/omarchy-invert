@@ -15,6 +15,7 @@
       "unit",
       "regression",
       "integration",
+      "lua",
       "shell"
     ],
     "integration_applicable": true,
@@ -22,13 +23,14 @@
       "unit": "tests/test_unit_*.py",
       "regression": "tests/test_regression_*.py",
       "integration": "tests/test_integration_*.py",
+      "lua": "tests/lua/*_test.lua",
       "shell": "tests/shell/test_*.sh"
     },
     "runner": "tools/run_tests.sh",
     "mutator": "tools/mutator.py",
     "mutation_config": "tests/mutation.json",
     "ci": ".github/workflows/test.yml",
-    "note": "four kinds (unit, regression, integration, shell) + policy as code; see tools/run_tests.sh",
+    "note": "unit + regression + integration (python, on the CLI), lua (on the module's effect/shader logic), shell, plus policy as code and mutation; see tools/run_tests.sh",
     "min_kill_rate": 0.8,
     "source_globs": [
       "bin/*",

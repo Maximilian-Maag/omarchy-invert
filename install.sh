@@ -60,16 +60,16 @@ if [[ -f "$BINDINGS" ]] && ! grep -q 'omarchy-toggle-invert' "$BINDINGS"; then
   cat >> "$BINDINGS" << 'LUA'
 
 -- omarchy-invert plugin
-o.bind("SUPER + CTRL + U",       "Toggle focused window color inversion", "omarchy-toggle-invert window")
-o.bind("SUPER + CTRL + ALT + U", "Toggle desktop color inversion",        "omarchy-toggle-invert desktop")
+o.bind("SUPER + CTRL + U",       "Cycle focused window: off / invert / high-contrast", "omarchy-toggle-invert window")
+o.bind("SUPER + CTRL + ALT + U", "Cycle desktop: off / invert / high-contrast",        "omarchy-toggle-invert desktop")
 LUA
   echo "  Added keybindings to $BINDINGS"
 elif grep -q 'omarchy-toggle-invert' "${BINDINGS:-/dev/null}" 2>/dev/null; then
   echo "  Keybindings already present."
 else
   echo "  No bindings.lua found — add these manually:"
-  echo '    o.bind("SUPER + CTRL + U",       "Toggle focused window color inversion", "omarchy-toggle-invert window")'
-  echo '    o.bind("SUPER + CTRL + ALT + U", "Toggle desktop color inversion",        "omarchy-toggle-invert desktop")'
+  echo '    o.bind("SUPER + CTRL + U",       "Cycle focused window: off / invert / high-contrast", "omarchy-toggle-invert window")'
+  echo '    o.bind("SUPER + CTRL + ALT + U", "Cycle desktop: off / invert / high-contrast",        "omarchy-toggle-invert desktop")'
 fi
 
 # ── 5. Reload Hyprland ────────────────────────────────────────────────────────
@@ -83,5 +83,5 @@ echo ""
 echo "Done!"
 echo ""
 echo "Keybindings:"
-echo "  Super + Ctrl + U        — invert focused window (toggle per-window)"
-echo "  Super + Ctrl + Alt + U  — invert whole desktop"
+echo "  Super + Ctrl + U        — cycle focused window: off / invert / high-contrast"
+echo "  Super + Ctrl + Alt + U  — cycle desktop: off / invert / high-contrast"

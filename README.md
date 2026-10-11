@@ -1,34 +1,80 @@
 # omarchy-invert
 
-Color inversion plugin for [Omarchy](https://omarchy.org/) — flip the colors of
-the focused window or the whole desktop without leaving the keyboard.
+Colour effects for [Omarchy](https://omarchy.org/) — cycle the focused window or
+the whole desktop through colour inversion and a maximum-contrast
+yellow-on-black mode, without leaving the keyboard.
+
+Each scope holds one of three **effects** and the shortcut cycles through them:
+
+| Effect | What it does |
+|--------|--------------|
+| `off` | pixels untouched |
+| `invert` | every channel flipped (`1 - rgb`) |
+| `contrast` | luminance mapped to **yellow on black** — the accessibility mode for low vision / maximum readability |
 
 | Hotkey | Action |
 |--------|--------|
-| `Super + Ctrl + U` | Toggle focused window inversion |
-| `Super + Ctrl + Alt + U` | Toggle whole-desktop inversion |
+| `Super + Ctrl + U` | Cycle the focused window: `off → invert → contrast → off` |
+| `Super + Ctrl + Alt + U` | Cycle the whole desktop: `off → invert → contrast → off` |
 
-Both modes are also available as CLI commands:
+Both scopes are also available as CLI commands:
 
 ```bash
-omarchy toggle invert window          # toggle window inversion
-omarchy toggle invert desktop         # toggle desktop inversion
-omarchy toggle invert window on|off   # explicit state
-omarchy toggle invert desktop --status # print JSON status
+omarchy toggle invert window            # cycle the focused window
+omarchy toggle invert desktop           # cycle the whole desktop
+omarchy toggle invert window contrast   # select an effect: off|invert|contrast
+omarchy toggle invert window on|off     # on = invert, off = off
+omarchy toggle invert desktop --status  # print JSON status
 ```
+
+`--status` prints `{"mode": "<scope>", "effect": "<off|invert|contrast>", "enabled": <bool>}`.
+
 
 ## How it works
 
 Hyprland exposes one screen shader (`decoration:screen_shader`) per output and
-applies it after rendering. There is no per-window shader hook, so both modes
-share that single slot: `hypr/invert.lua` owns it and generates the correct GLSL
-as the switches flip, masking to the focused window's rectangle via the
+applies it after rendering. There is no per-window shader hook, so every effect
+shares that single slot: `hypr/invert.lua` owns it and generates the correct GLSL
+as the effects change, masking to each pinned window's rectangle via the
 `wl_output` uniform and `v_texcoord`.
 
-Because the two switches are independent, turning **both on** cancels the
-inversion inside the focused window — a normally-colored window on an inverted
-desktop, which is the useful combination for reading one photo or video on a
-screen you have otherwise darkened.
+The generated shader carries an integer `mode` (0 off, 1 invert, 2 contrast) for
+the desktop and one rectangle clause per pinned window, each overriding the mode
+inside its rectangle:
+
+```glsl
+int mode = 0;                                 // desktop effect
+if (wl_output == 0 && v_texcoord.x >= … ) {   // pinned window rectangle
+  mode = 2;
+}
+vec3 rgb = pixel.rgb;
+if (mode == 1) {
+  rgb = vec3(1.0) - rgb;                      // invert
+} else if (mode == 2) {
+  float luma = dot(rgb, vec3(0.2126, 0.7152, 0.0722));
+  rgb = vec3(smoothstep(0.15, 0.85, luma)) * vec3(1.0, 1.0, 0.0);  // yellow on black
+}
+fragColor = vec4(rgb, pixel.a);
+```
+
+The two scopes combine as *the pinned window's effect wins inside its own
+rectangle; the desktop effect applies everywhere else*. One special case survives
+from the original plugin because it is genuinely useful: desktop `invert` +
+window `invert` cancel, leaving that window normally-coloured on an otherwise
+inverted desktop (the combination for reading one photo or video on a screen you
+have otherwise darkened). Contrast always wins — it is the accessibility effect
+and should never silently disappear.
+
+### The contrast effect
+
+`contrast` is the accessibility mode. It discards colour and maps luminance to
+yellow on black: `smoothstep(0.15, 0.85, luma)` compresses the luminance into
+0–1 with an S-curve, so mid-tones are pushed apart, then that value becomes the
+yellow channel — bright pixels glow yellow, dark pixels go black. The band
+(0.15–0.85) is a compromise: hard enough to maximise legibility of text and UI
+chrome, soft enough to keep photos and anti-aliased edges from collapsing into
+two-tone blocks.
+
 
 ### Technical constraints
 
@@ -82,8 +128,8 @@ sudo chmod +x /usr/local/bin/omarchy-toggle-invert
 #   require("omarchy.invert")
 
 # 5. Add keybindings to ~/.config/hypr/bindings.lua:
-#   o.bind("SUPER + CTRL + U",       "Toggle focused window color inversion", "omarchy-toggle-invert window")
-#   o.bind("SUPER + CTRL + ALT + U", "Toggle desktop color inversion",        "omarchy-toggle-invert desktop")
+#   o.bind("SUPER + CTRL + U",       "Cycle focused window: off / invert / high-contrast", "omarchy-toggle-invert window")
+#   o.bind("SUPER + CTRL + ALT + U", "Cycle desktop: off / invert / high-contrast",        "omarchy-toggle-invert desktop")
 ```
 
 ## Tested on

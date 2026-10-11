@@ -1,7 +1,7 @@
 name: tests
 
 # Policy as code runs here too, but as part of the full suite: every test kind the
-# plugin promises (unit, regression, integration, js, shell) plus mutation testing.
+# plugin promises (unit, regression, integration, js, lua, shell) plus mutation testing.
 on:
   push:
   pull_request:
@@ -19,7 +19,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: All test kinds (policy, unit, regression, integration, js, shell, mutation)
+      - name: Install lua (for the module's effect/shader tests)
+        run: sudo apt-get update && sudo apt-get install -y lua5.4
+      - name: All test kinds (policy, unit, regression, integration, js, lua, shell, mutation)
         run: bash tools/run_tests.sh
         env:
           PYTHONDONTWRITEBYTECODE: "1"

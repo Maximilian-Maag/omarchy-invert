@@ -47,16 +47,16 @@ class ToggleInvertRegressionCase(unittest.TestCase):
         (self.state / "omarchy/invert.status").write_text(text)
 
     def test_status_is_per_mode_not_global(self):
-        # Bug pinned: a "window=true" line made "desktop --status" report enabled.
-        self.write_status("desktop=false\nwindow=true\n")
+        # Bug pinned: a "window=..." line made "desktop --status" report enabled.
+        self.write_status("desktop=off\nwindow=invert\n")
         self.assertEqual(json.loads(self.run_cli("desktop", "--status").stdout)["enabled"],
                          False)
 
     def test_default_action_is_toggle_not_set(self):
         # Bug pinned: omitting the action defaulted to turning the mode on.
         self.assertEqual(self.run_cli("window").returncode, 0)
-        self.assertIn("toggle('window')", self.calls())
-        self.assertNotIn("set('window', true)", self.calls())
+        self.assertIn("cycle('window')", self.calls())
+        self.assertNotIn("set('window', 'invert')", self.calls())
 
     def test_invalid_mode_is_validated_before_dispatch(self):
         # Bug pinned: a bad mode fell through and reached hyprctl.
@@ -68,14 +68,28 @@ class ToggleInvertRegressionCase(unittest.TestCase):
     def test_mode_argument_is_passed_through_verbatim(self):
         # Bug pinned: window actions were dispatched with the desktop mode hard-coded.
         self.assertEqual(self.run_cli("window", "off").returncode, 0)
-        self.assertIn("set('window', false)", self.calls())
+        self.assertIn("set('window', 'off')", self.calls())
         self.assertNotIn("desktop", self.calls())
+
+    def test_on_selects_invert_not_contrast(self):
+        # Bug pinned: "on" must mean the ordinary invert effect, never the
+        # accessibility contrast one — an "on" that silently became yellow-on-black
+        # would be a nasty surprise for anyone scripting the CLI.
+        self.assertEqual(self.run_cli("desktop", "on").returncode, 0)
+        self.assertIn("set('desktop', 'invert')", self.calls())
+        self.assertNotIn("contrast", self.calls())
 
     def test_status_does_not_touch_hyprctl_or_the_state_dir(self):
         # Bug pinned: reading status created the state dir and called the compositor.
         self.assertEqual(self.run_cli("desktop", "--status").returncode, 0)
         self.assertEqual(self.calls(), "")
         self.assertFalse((self.state / "omarchy").exists())
+
+    def test_a_pre_1_2_status_file_still_reads(self):
+        # Bug pinned: after the effect model landed, an old install's boolean
+        # status file must not report "off" for a mode that was on.
+        self.write_status("desktop=true\nwindow=false\n")
+        self.assertTrue(json.loads(self.run_cli("desktop", "--status").stdout)["enabled"])
 
 
 if __name__ == "__main__":

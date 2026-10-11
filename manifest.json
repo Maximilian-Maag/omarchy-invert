@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "Maximilian-Maag.invert",
   "name": "Invert",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "author": "Maximilian-Maag",
   "license": "MIT",
-  "description": "Color inversion for Omarchy \u2014 invert the focused window or the whole desktop via Super+Ctrl+U / Super+Ctrl+Alt+U.",
+  "description": "Colour effects for Omarchy \u2014 cycle the focused window or the whole desktop through colour inversion and a maximum-contrast yellow-on-black mode via Super+Ctrl+U / Super+Ctrl+Alt+U.",
   "kinds": [
     "hyprland-module",
     "cli"
@@ -29,11 +29,11 @@
     "bindings": [
       {
         "keys": "SUPER + CTRL + U",
-        "description": "Toggle focused window color inversion"
+        "description": "Cycle the focused window: off \u2192 invert \u2192 high-contrast"
       },
       {
         "keys": "SUPER + CTRL + ALT + U",
-        "description": "Toggle desktop color inversion"
+        "description": "Cycle the whole desktop: off \u2192 invert \u2192 high-contrast"
       }
     ]
   }

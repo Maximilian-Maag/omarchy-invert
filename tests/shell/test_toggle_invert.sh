@@ -39,7 +39,7 @@ reset() { rm -rf "$STATE" "$LOG"; }
 calls() { cat "$LOG" 2>/dev/null; }
 write_status() { mkdir -p "$STATE/omarchy"; printf '%s' "$1" > "$STATE/omarchy/invert.status"; }
 
-# ── dispatch for every meaningful mode/action ─────────────────────────────
+# ── dispatch for every meaningful scope/action ────────────────────────────
 while IFS='|' read -r args expected; do
   reset
   # shellcheck disable=SC2086
@@ -50,22 +50,25 @@ while IFS='|' read -r args expected; do
     fail "dispatch: $args -> $expected (got '$(calls)')"
   fi
 done <<'CASES'
-desktop on|set('desktop', true)
-desktop off|set('desktop', false)
-desktop toggle|toggle('desktop')
-window on|set('window', true)
-window off|set('window', false)
-window toggle|toggle('window')
-window|toggle('window')
+desktop on|set('desktop', 'invert')
+desktop off|set('desktop', 'off')
+desktop invert|set('desktop', 'invert')
+desktop contrast|set('desktop', 'contrast')
+desktop toggle|cycle('desktop')
+window on|set('window', 'invert')
+window off|set('window', 'off')
+window contrast|set('window', 'contrast')
+window toggle|cycle('window')
+window|cycle('window')
 CASES
 
 # ── validation ────────────────────────────────────────────────────────────
 reset
 ERR="$TMP/stderr"
 run_cli monitor on 2>"$ERR"; rc=$?
-if (( rc == 1 )); then pass "an invalid mode exits 1"; else fail "an invalid mode must exit 1 (got $rc)"; fi
-assert_contains "$ERR" "Usage:" "an invalid mode prints usage to stderr"
-assert_not_contains "$LOG" "hyprctl" "an invalid mode never dispatches"
+if (( rc == 1 )); then pass "an invalid scope exits 1"; else fail "an invalid scope must exit 1 (got $rc)"; fi
+assert_contains "$ERR" "Usage:" "an invalid scope prints usage to stderr"
+assert_not_contains "$LOG" "hyprctl" "an invalid scope never dispatches"
 
 reset
 run_cli desktop blink 2>"$ERR"; rc=$?
@@ -76,33 +79,55 @@ assert_not_contains "$LOG" "hyprctl" "an invalid action never dispatches"
 # ── status readout ────────────────────────────────────────────────────────
 reset
 out="$(run_cli desktop --status)"
-if [[ $out == '{"mode":"desktop","enabled":false}' ]]; then
-  pass "no status file reports disabled"
+if [[ $out == '{"mode":"desktop","effect":"off","enabled":false}' ]]; then
+  pass "no status file reports off"
 else
-  fail "no status file reports disabled (got '$out')"
+  fail "no status file reports off (got '$out')"
 fi
 assert_not_contains "$LOG" "hyprctl" "reading status never dispatches"
+
+reset
+write_status 'desktop=invert
+window=off
+'
+out="$(run_cli desktop --status)"
+if [[ $out == '{"mode":"desktop","effect":"invert","enabled":true}' ]]; then
+  pass "an invert line reports enabled"
+else
+  fail "an invert line reports enabled (got '$out')"
+fi
+
+reset
+write_status 'desktop=contrast
+window=off
+'
+out="$(run_cli desktop --status)"
+if [[ $out == '{"mode":"desktop","effect":"contrast","enabled":true}' ]]; then
+  pass "a contrast line reports the contrast effect"
+else
+  fail "a contrast line reports the contrast effect (got '$out')"
+fi
+
+reset
+write_status 'desktop=off
+window=invert
+'
+out="$(run_cli desktop --status)"
+if [[ $out == '{"mode":"desktop","effect":"off","enabled":false}' ]]; then
+  pass "status is per-scope (window=invert does not enable desktop)"
+else
+  fail "status is per-scope (got '$out')"
+fi
 
 reset
 write_status 'desktop=true
 window=false
 '
 out="$(run_cli desktop --status)"
-if [[ $out == '{"mode":"desktop","enabled":true}' ]]; then
-  pass "a true line reports enabled"
+if [[ $out == '{"mode":"desktop","effect":"invert","enabled":true}' ]]; then
+  pass "a pre-1.2 boolean status file still reads"
 else
-  fail "a true line reports enabled (got '$out')"
-fi
-
-reset
-write_status 'desktop=false
-window=true
-'
-out="$(run_cli desktop --status)"
-if [[ $out == '{"mode":"desktop","enabled":false}' ]]; then
-  pass "status is per-mode (window=true does not enable desktop)"
-else
-  fail "status is per-mode (got '$out')"
+  fail "a pre-1.2 boolean status file still reads (got '$out')"
 fi
 
 # ── state directory ───────────────────────────────────────────────────────

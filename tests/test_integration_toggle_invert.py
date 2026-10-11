@@ -3,6 +3,9 @@
 A stub hyprctl emulates the Lua module — it parses the dispatched expression and
 rewrites the status file the CLI later reads back — so the full command -> module
 -> state -> `--status` path is exercised. The user's real session is never used.
+
+Window scope is modelled as a single value: the effect of the "focused" window,
+which is exactly what the module reports while one window has focus.
 """
 import json
 import os
@@ -17,22 +20,27 @@ REPO = pathlib.Path(__file__).resolve().parent.parent
 CLI = REPO / "bin/omarchy-toggle-invert"
 
 MODULE_STUB = r"""#!/bin/bash
-# Emulates hypr/invert.lua: applies the dispatched set()/toggle() to the status file.
+# Emulates hypr/invert.lua: applies the dispatched set()/cycle() to the status file.
+# Status lines hold an effect name (off|invert|contrast), not a boolean.
 echo "$*" >> "$HYPRCTL_LOG"
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy"
 mkdir -p "$STATE_DIR"
 f="$STATE_DIR/invert.status"
-[ -f "$f" ] || printf 'desktop=false\nwindow=false\n' > "$f"
-d=$(sed -n 's/^desktop=//p' "$f")
-w=$(sed -n 's/^window=//p' "$f")
+[ -f "$f" ] || printf 'desktop=off\nwindow=off\n' > "$f"
+d=$(sed -n 's/^desktop=//p' "$f"); [ -n "$d" ] || d=off
+w=$(sed -n 's/^window=//p'  "$f"); [ -n "$w" ] || w=off
+case "$d" in true) d=invert;; false) d=off;; esac
+case "$w" in true) w=invert;; false) w=off;; esac
 expr="$2"
 case "$expr" in
-  *"set('desktop', true)"*) d=true ;;
-  *"set('desktop', false)"*) d=false ;;
-  *"set('window', true)"*) w=true ;;
-  *"set('window', false)"*) w=false ;;
-  *"toggle('desktop')"*) if [ "$d" = true ]; then d=false; else d=true; fi ;;
-  *"toggle('window')"*) if [ "$w" = true ]; then w=false; else w=true; fi ;;
+  *"set('desktop', 'invert')"*)   d=invert ;;
+  *"set('desktop', 'contrast')"*) d=contrast ;;
+  *"set('desktop', 'off')"*)      d=off ;;
+  *"set('window', 'invert')"*)    w=invert ;;
+  *"set('window', 'contrast')"*)  w=contrast ;;
+  *"set('window', 'off')"*)       w=off ;;
+  *"cycle('desktop')"*) case "$d" in off) d=invert;; invert) d=contrast;; *) d=off;; esac ;;
+  *"cycle('window')"*)  case "$w" in off) w=invert;; invert) w=contrast;; *) w=off;; esac ;;
 esac
 printf 'desktop=%s\nwindow=%s\n' "$d" "$w" > "$f"
 exit 0
@@ -62,43 +70,53 @@ class ToggleInvertIntegrationCase(unittest.TestCase):
         return subprocess.run(["bash", str(CLI), *args], env=env, cwd=str(REPO),
                               capture_output=True, text=True)
 
-    def status(self, mode):
-        proc = self.run_cli(mode, "--status")
+    def status(self, scope):
+        proc = self.run_cli(scope, "--status")
         self.assertEqual(proc.returncode, 0, proc.stderr)
         return json.loads(proc.stdout)
 
     def calls(self):
         return self.log.read_text() if self.log.exists() else ""
 
-    def test_desktop_on_then_off_round_trips(self):
+    def test_desktop_on_off_round_trips(self):
         self.assertEqual(self.run_cli("desktop", "on").returncode, 0)
-        self.assertTrue(self.status("desktop")["enabled"])
-        self.assertIn("require('Maximilian-Maag.invert').set('desktop', true)", self.calls())
+        self.assertEqual(self.status("desktop"), {"mode": "desktop", "effect": "invert",
+                                                  "enabled": True})
+        self.assertIn("require('Maximilian-Maag.invert').set('desktop', 'invert')",
+                      self.calls())
         self.assertEqual(self.run_cli("desktop", "off").returncode, 0)
-        self.assertFalse(self.status("desktop")["enabled"])
+        self.assertEqual(self.status("desktop")["effect"], "off")
+
+    def test_desktop_cycle_walks_off_invert_contrast(self):
+        self.run_cli("desktop", "toggle")
+        self.assertEqual(self.status("desktop")["effect"], "invert")
+        self.run_cli("desktop", "toggle")
+        self.assertEqual(self.status("desktop")["effect"], "contrast")
+        self.run_cli("desktop", "toggle")
+        self.assertEqual(self.status("desktop")["effect"], "off")
 
     def test_window_mode_is_independent_of_desktop_mode(self):
-        self.run_cli("window", "on")
-        self.assertTrue(self.status("window")["enabled"])
-        self.assertFalse(self.status("desktop")["enabled"],
-                         "pinning a window must not enable desktop inversion")
+        self.run_cli("window", "contrast")
+        self.assertEqual(self.status("window")["effect"], "contrast")
+        self.assertEqual(self.status("desktop")["effect"], "off",
+                         "changing a window must not change the desktop effect")
 
-    def test_repeated_window_toggle_flips_the_pin(self):
-        self.run_cli("window", "on")
-        self.assertTrue(self.status("window")["enabled"])
-        self.run_cli("window")            # default action: toggle
-        self.assertFalse(self.status("window")["enabled"])
+    def test_repeated_window_cycle_walks_off_invert_contrast(self):
+        self.run_cli("window")            # default action: cycle
+        self.assertEqual(self.status("window")["effect"], "invert")
         self.run_cli("window")
-        self.assertTrue(self.status("window")["enabled"])
+        self.assertEqual(self.status("window")["effect"], "contrast")
+        self.run_cli("window")
+        self.assertEqual(self.status("window")["effect"], "off")
 
-    def test_both_modes_can_be_tracked_at_once(self):
-        self.run_cli("desktop", "on")
-        self.run_cli("window", "on")
-        self.assertTrue(self.status("desktop")["enabled"])
-        self.assertTrue(self.status("window")["enabled"])
+    def test_both_scopes_can_be_tracked_at_once(self):
+        self.run_cli("desktop", "invert")
+        self.run_cli("window", "contrast")
+        self.assertEqual(self.status("desktop")["effect"], "invert")
+        self.assertEqual(self.status("window")["effect"], "contrast")
         self.run_cli("desktop", "off")
-        self.assertFalse(self.status("desktop")["enabled"])
-        self.assertTrue(self.status("window")["enabled"])
+        self.assertEqual(self.status("desktop")["effect"], "off")
+        self.assertEqual(self.status("window")["effect"], "contrast")
 
 
 if __name__ == "__main__":
