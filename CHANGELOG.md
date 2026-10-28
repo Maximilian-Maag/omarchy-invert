@@ -2,6 +2,14 @@
 
 All notable changes to omarchy-invert are documented here.
 
+## [1.2.2] — 2026-10-28
+
+### Fixed
+- **The mutation runner ignored every declared equivalent mutant** (#1). Its filter looked
+  up `r.get("kind")` while the survivor record stores `"operator"`, so the `equivalent`
+  list was silently inert. It now reads `r.get("operator")`, matching the sibling repos,
+  with a regression test driving the real runner over a fixture.
+
 ## [1.2.1] — 2026-10-11
 
 ### Fixed
