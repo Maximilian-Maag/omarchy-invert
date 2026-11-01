@@ -6,9 +6,11 @@
 --
 --   off       — the pixels untouched (no effect)
 --   invert    — every channel flipped, 1 - rgb
---   contrast  — luminance mapped to yellow on black (maximum-contrast mode,
---               the accessibility one: bright pixels become yellow, dark
---               pixels black, with an S-curve that hardens the mid-tones)
+--   contrast  — yellow on black (maximum-contrast mode, the accessibility one):
+--               the local background, whichever luminance dominates a
+--               neighbourhood, is mapped to black and everything else to yellow,
+--               so a light document page and a dark toolbar both read as yellow
+--               on black — the whole window, not just the page
 --
 -- Each of the two scopes carries one of these effects:
 --
@@ -101,10 +103,10 @@ end
 -- A focused window's border comes from the theme, and a mid-luminance theme
 -- accent (Omarchy's active border is a green gradient at ~0.5 luminance) maps to
 -- a dull olive under the contrast effect rather than a bright yellow. While any
--- contrast effect is live the focused border is forced to full yellow, which the
--- shader — seeing a full-luminance colour — keeps as pure yellow; the theme's
--- own border (gradient or solid, whatever it is) is put back when the last
--- contrast effect goes away.
+-- contrast effect is live the focused border is forced to bright yellow, which the
+-- shader — seeing a bright colour against the dark desktop around the window —
+-- renders as pure yellow; the theme's own border (gradient or solid, whatever it
+-- is) is put back when the last contrast effect goes away.
 local saved_border = nil
 local border_forced = false
 
@@ -233,14 +235,28 @@ local function shader_source(targets, desktop)
   table.insert(lines, "    vec3 lw = vec3(0.2126, 0.7152, 0.0722);")
   table.insert(lines, "    float luma = dot(rgb, lw);")
   table.insert(lines, "    vec2 texel = 1.0 / vec2(textureSize(tex, 0));")
-  table.insert(lines, "    float ln = dot(texture(tex, v_texcoord - vec2(3.0 * texel.x, 0.0)).rgb, lw);")
-  table.insert(lines, "    float rn = dot(texture(tex, v_texcoord + vec2(3.0 * texel.x, 0.0)).rgb, lw);")
+  -- A *modest* local average is the neighbourhood's background. Whichever luminance dominates
+  -- it is mapped to black and everything else to yellow, so a light page and a dark toolbar
+  -- both read as yellow on black. The radius matters: a wide kernel (20 px, tried) reaches
+  -- across a page/tool-bar seam and drags the dark side into the light side, flipping a band of
+  -- background to yellow -- the "text crops together" artifact. 10 px is bigger than a glyph but
+  -- short enough not to bridge a seam.
+  table.insert(lines, "    float bgL = 0.0;")
+  table.insert(lines, "    for (int gy = -1; gy <= 1; ++gy) {")
+  table.insert(lines, "      for (int gx = -1; gx <= 1; ++gx) {")
+  table.insert(lines, "        vec2 o = vec2(float(gx), float(gy)) * 10.0 * texel;")
+  table.insert(lines, "        bgL += dot(texture(tex, v_texcoord + o).rgb, lw);")
+  table.insert(lines, "      }")
+  table.insert(lines, "    }")
+  table.insert(lines, "    bgL /= 9.0;")
   table.insert(lines, string.format(
-    "    float base = smoothstep(%.2f, %.2f, luma);", CONTRAST_LO, CONTRAST_HI
+    "    float s = smoothstep(%.2f, %.2f, luma);", CONTRAST_LO, CONTRAST_HI
   ))
-  table.insert(lines, "    float bg = 0.5 * (ln + rn);")
-  table.insert(lines, "    float outl = (abs(ln - rn) < 0.06 && abs(luma - bg) > 0.06) ? (bg > 0.5 ? 0.0 : 1.0) : base;")
-  table.insert(lines, "    rgb = vec3(outl) * vec3(1.0, 1.0, 0.0);")
+  -- No thin-stroke snap: under this mapping the background is already black and features are
+  -- already yellow, so forcing strokes to the extreme only thickened text into blobs. The caret
+  -- reads on either polarity from `base` alone.
+  table.insert(lines, "    float base = (bgL > 0.5) ? (1.0 - s) : s;")
+  table.insert(lines, "    rgb = vec3(base) * vec3(1.0, 1.0, 0.0);")
   table.insert(lines, "  }")
   table.insert(lines, "  fragColor = vec4(rgb, pixel.a);")
   table.insert(lines, "}")

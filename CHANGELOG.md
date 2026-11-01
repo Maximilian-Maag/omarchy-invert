@@ -2,6 +2,23 @@
 
 All notable changes to omarchy-invert are documented here.
 
+## [1.2.3] — 2026-11-01
+
+### Changed
+- **Contrast mode is now actually yellow on black — the whole window, not just the
+  page.** The shader mapped *bright* pixels to yellow and dark to black, so a light
+  document (bright paper, dark ink) rendered as black text on a yellow page — the
+  inverse of the mode's name. The mapping is now polarity-aware: a wide local
+  average gives each neighbourhood's background luminance, and the background —
+  whichever luminance dominates — is mapped to black while everything else goes
+  yellow. A light document page **and** the dark toolbar/status bar around it
+  therefore both read as yellow text on black. The focused-window border is forced
+  to bright yellow (kept pure yellow under this mapping). The old thin-stroke snap
+  was removed (under this mapping it only thickened text into blobs), and the
+  background is sampled over a 10 px radius — a wider kernel reached across a
+  page/tool-bar seam, dragged the dark side into the light side and flipped a band
+  of background to yellow (the "text crops together" artifact).
+
 ## [1.2.2] — 2026-10-28
 
 ### Fixed

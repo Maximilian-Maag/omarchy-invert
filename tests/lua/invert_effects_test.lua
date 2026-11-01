@@ -190,9 +190,12 @@ do
   s = shader_text()
   contains(s, "int mode = 2;", "cycle 2: desktop -> contrast selects mode 2")
   contains(s, "smoothstep(0.15, 0.85, luma)", "cycle 2: shader stretches luminance")
+  contains(s, "(bgL > 0.5) ? (1.0 - s) : s",
+           "cycle 2: shader maps the local background to black (yellow on black)")
   contains(s, "vec3(1.0, 1.0, 0.0)", "cycle 2: shader paints yellow-on-black")
   contains(s, "textureSize(tex, 0)", "cycle 2: contrast samples neighbours")
-  contains(s, "abs(ln - rn)", "cycle 2: contrast snaps thin vertical features to the opposite extreme")
+  contains(s, "* 10.0 * texel", "cycle 2: the kernel radius is 10 px (a wider one bridges a seam)")
+  not_contains(s, "abs(ln - rn)", "cycle 2: no thin-stroke snap (it thickened text into blobs)")
   contains(status_text(), "desktop=contrast", "cycle 2: status desktop=contrast")
 
   inv.cycle("desktop")
@@ -340,12 +343,12 @@ do
   check(last_shader() == nil, "cycling with no focused window does nothing")
 end
 
--- 12. Contrast forces a bright-yellow focused border and restores the theme's.
+-- 12. Contrast forces a bright-yellow focused border (rendered pure yellow) and restores the theme's.
 do
   local inv = reset()
   inv.set("desktop", "contrast")
   check(#border_calls == 1 and border_calls[1] == "rgba(ffff00ff)",
-        "desktop contrast forces the active border to bright yellow")
+        "desktop contrast forces the active border to bright yellow (rendered pure yellow)")
 
   inv.set("desktop", "off")
   check(#border_calls == 2 and border_calls[2] == THEME_BORDER,
@@ -359,7 +362,7 @@ do
   active = windows[1]
   inv.set("window", "contrast")
   check(#border_calls == 1 and border_calls[1] == "rgba(ffff00ff)",
-        "a contrast window forces the active border to bright yellow")
+        "a contrast window forces the active border to bright yellow (rendered pure yellow)")
   inv.set("window", "off")
   check(#border_calls == 2 and border_calls[2] == THEME_BORDER,
         "unpinning the last contrast window restores the theme's border")

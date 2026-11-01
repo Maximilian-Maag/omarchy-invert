@@ -10,7 +10,7 @@ Each scope holds one of three **effects** and the shortcut cycles through them:
 |--------|--------------|
 | `off` | pixels untouched |
 | `invert` | every channel flipped (`1 - rgb`) |
-| `contrast` | luminance mapped to **yellow on black** — the accessibility mode for low vision / maximum readability |
+| `contrast` | **yellow on black** — the accessibility mode for low vision / maximum readability: the neighbourhood's background (light or dark) is mapped to black, everything else to yellow |
 
 | Hotkey | Action |
 |--------|--------|
@@ -52,7 +52,10 @@ if (mode == 1) {
   rgb = vec3(1.0) - rgb;                      // invert
 } else if (mode == 2) {
   float luma = dot(rgb, vec3(0.2126, 0.7152, 0.0722));
-  rgb = vec3(smoothstep(0.15, 0.85, luma)) * vec3(1.0, 1.0, 0.0);  // yellow on black
+  float bgL  = /* local average over 10 px = the neighbourhood's background */;
+  float s    = smoothstep(0.15, 0.85, luma);
+  float base = (bgL > 0.5) ? (1.0 - s) : s;   // background -> 0 (black), features -> 1
+  rgb = vec3(base) * vec3(1.0, 1.0, 0.0);     // yellow on black
 }
 fragColor = vec4(rgb, pixel.a);
 ```
@@ -67,28 +70,34 @@ and should never silently disappear.
 
 ### The contrast effect
 
-`contrast` is the accessibility mode. It discards color and maps luminance to
-yellow on black: `smoothstep(0.15, 0.85, luma)` compresses the luminance into
-0–1 with an S-curve, so mid-tones are pushed apart, then that value becomes the
-yellow channel — bright pixels glow yellow, dark pixels go black. The band
-(0.15–0.85) is a compromise: hard enough to maximise legibility of text and UI
-chrome, soft enough to keep photos and anti-aliased edges from collapsing into
-two-tone blocks.
+`contrast` is the accessibility mode. It discards color and maps everything to
+yellow on black, choosing the direction per pixel: a local average over a 10 px
+radius gives the neighbourhood's background luminance, and the background —
+whichever luminance dominates — becomes black while everything else becomes yellow.
+So a **light document** (white paper, black ink) reads as yellow text on a black
+page, and a **dark application** (dark UI, light text) reads the same way: the whole
+window is yellow on black, the page and the toolbar/status bar around it alike. The
+radius is a compromise — big enough to see past a glyph, short enough not to bridge
+a page/tool-bar seam (a wider kernel dragged the dark side into the light side and
+flipped a band of background to yellow). The band (0.15–0.85) is a second
+compromise: hard enough to maximise legibility of text and UI chrome, soft enough to
+keep anti-aliased edges from collapsing into two-tone blocks. A mid-grey background
+(neither clearly light nor dark) is the one case with no clear direction.
 
-Two focus indicators get help, because a plain luminance mapping renders both as
-a dull olive:
+The focused-window border gets help, because a plain luminance mapping renders it
+as a dull olive:
 
 - **The focused-window border.** Omarchy's active border is a green gradient at
   ~0.5 luminance, which maps to a muddy olive. While any contrast effect is live
-  the module forces the active border to full yellow (which the shader keeps as
-  pure yellow) and restores the theme's own border — gradient or solid — as soon
-  as the last contrast effect goes away.
-- **The blinking text caret.** On a light (white → yellow) field a light caret
-  went yellow-on-yellow and vanished. The shader detects thin vertical strokes
-  (the caret, and text stems) by comparing each pixel to its horizontal
-  neighbours and snaps them to the *opposite* extreme of their background: black
-  on a yellow field, yellow on a black one. Plain areas, text and images are left
-  alone.
+  the module forces the active border to bright yellow — which the shader, seeing a
+  bright colour against the dark desktop around the window, keeps as pure yellow —
+  and restores the theme's own border (gradient or solid) as soon as the last
+  contrast effect goes away.
+
+Earlier versions snapped thin vertical strokes (the caret) to an extreme so they
+stayed legible. Under this mapping the background is already black and features
+already yellow, so that snap only thickened text into blobs; it was removed and the
+caret now reads from the base mapping alone.
 
 
 
