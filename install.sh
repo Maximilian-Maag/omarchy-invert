@@ -8,7 +8,8 @@ set -euo pipefail
 PLUGIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HYPR_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/hypr"
 HYPR_MAIN="$HYPR_CONFIG_DIR/hyprland.lua"
-BIN_DIR="/usr/local/bin"
+# Overridable so the shell tests can install into a throwaway bin dir.
+BIN_DIR="${OMARCHY_INVERT_BIN:-/usr/local/bin}"
 LUA_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/Maximilian-Maag"
 
 echo "omarchy-invert: installing from $PLUGIN_DIR"
@@ -21,24 +22,20 @@ ln -sf "$PLUGIN_DIR/hypr/invert.lua" "$LUA_DIR/invert.lua"
 echo "  Linked Lua module -> $LUA_DIR/invert.lua"
 
 # ── 2. Install CLI binary onto PATH ───────────────────────────────────────────
+# Symlink, don't copy: a copy goes stale the moment this repo changes, so a
+# `git pull` never reached the installed binary. A symlink keeps it current, and
+# the "already linked" guard below keeps re-runs idempotent.
 DEST_BIN="$BIN_DIR/omarchy-toggle-invert"
 SRC_BIN="$PLUGIN_DIR/bin/omarchy-toggle-invert"
-# Skip if already a symlink pointing to our source
+chmod +x "$SRC_BIN"
 if [[ -L "$DEST_BIN" ]] && [[ "$(readlink -f "$DEST_BIN")" == "$(readlink -f "$SRC_BIN")" ]]; then
   echo "  Binary already linked."
+elif (( EUID == 0 )); then
+  ln -sf "$SRC_BIN" "$DEST_BIN" && echo "  Installed binary -> $DEST_BIN"
+elif command -v sudo >/dev/null 2>&1; then
+  sudo ln -sf "$SRC_BIN" "$DEST_BIN" && echo "  Installed binary -> $DEST_BIN"
 else
-  _install_bin() {
-    cp "$SRC_BIN" "$DEST_BIN"
-    chmod 755 "$DEST_BIN"
-  }
-  if [[ $EUID -eq 0 ]]; then
-    _install_bin
-  elif command -v sudo >/dev/null 2>&1; then
-    sudo bash -c "cp '$SRC_BIN' '$DEST_BIN' && chmod 755 '$DEST_BIN'"
-  else
-    pkexec bash -c "cp '$SRC_BIN' '$DEST_BIN' && chmod 755 '$DEST_BIN'"
-  fi
-  echo "  Installed binary -> $DEST_BIN"
+  echo "  WARNING: no sudo — add $SRC_BIN to PATH manually."
 fi
 
 # ── 3. Wire into Hyprland config ──────────────────────────────────────────────
