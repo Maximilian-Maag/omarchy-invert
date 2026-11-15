@@ -22,9 +22,11 @@ counted as killed, so a syntax error cannot inflate the score.
 """
 import argparse
 import json
+import os
 import pathlib
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -191,6 +193,29 @@ def load_config(repo, path):
     return cfg
 
 
+def run_tests(cmd, cwd, timeout):
+    """Run a target's tests in their own process group; return (rc, stdout, stderr).
+
+    A target whose tests themselves spawn processes — mutating `tools/mutator.py` runs a
+    NESTED mutator — leaked those grandchildren when only the direct child was killed at
+    the timeout: they kept spinning at 100% CPU long after the pass had printed its
+    verdict (measured: five orphans, up to 2.7h, load average 7.5). Killing the whole
+    process group is what stops that.
+    """
+    proc = subprocess.Popen(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            text=True, start_new_session=True)
+    try:
+        out, err = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except (OSError, ProcessLookupError):
+            pass
+        proc.communicate()
+        raise
+    return proc.returncode, out, err
+
+
 def run_target(repo, target, cfg, tmp_root, dry_run=False, log=print):
     src = repo / target["path"]
     if not src.is_file():
@@ -212,16 +237,15 @@ def run_target(repo, target, cfg, tmp_root, dry_run=False, log=print):
     # be counted as killed and the target would report a fake perfect score.
     if not dry_run:
         try:
-            base = subprocess.run(target["tests"], cwd=str(work / "repo"),
-                                  capture_output=True, text=True, timeout=cfg["timeout"])
+            rc, out, err = run_tests(target["tests"], str(work / "repo"), cfg["timeout"])
         except subprocess.TimeoutExpired:
             return {"name": target["path"], "lang": lang, "mutants": [],
                     "error": "baseline test run timed out"}
-        if base.returncode != 0:
+        if rc != 0:
             return {"name": target["path"], "lang": lang, "mutants": [],
                     "error": "baseline tests fail on unmutated code (a mutation score "
                              "would be meaningless): " +
-                             (base.stdout + base.stderr).strip().splitlines()[-1][:160]}
+                             (out + err).strip().splitlines()[-1][:160]}
 
     results = []
     for offset, end, replacement, label, line_no in mutants:
@@ -243,10 +267,9 @@ def run_target(repo, target, cfg, tmp_root, dry_run=False, log=print):
             continue
         started = time.time()
         try:
-            proc = subprocess.run(target["tests"], cwd=str(work / "repo"),
-                                  capture_output=True, text=True, timeout=cfg["timeout"])
-            verdict = "killed" if proc.returncode != 0 else "survived"
-            detail = (proc.stdout + proc.stderr).strip().splitlines()[-1:] or [""]
+            rc, out, err = run_tests(target["tests"], str(work / "repo"), cfg["timeout"])
+            verdict = "killed" if rc != 0 else "survived"
+            detail = (out + err).strip().splitlines()[-1:] or [""]
         except subprocess.TimeoutExpired:
             verdict, detail = "timeout", ["test run exceeded %ss" % cfg["timeout"]]
         copied.write_bytes(original)
@@ -262,6 +285,8 @@ def run_target(repo, target, cfg, tmp_root, dry_run=False, log=print):
     # in the output — the threshold itself is never lowered.
     equiv = {(e.get("line"), e.get("kind")) for e in (target.get("equivalent") or [])}
     survivors = [r for r in results if r["verdict"] == "survived"]
+    # the mutant record names this field "operator", not "kind" — matching on "kind" read
+    # a key that does not exist, so the filter silently never fired
     equivalent = [r for r in survivors if (r.get("line"), r.get("operator")) in equiv]
     counted = [r for r in results if r["verdict"] in ("killed", "survived")
                and r not in equivalent]
