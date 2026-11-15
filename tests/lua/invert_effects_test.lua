@@ -76,6 +76,9 @@ local handlers = {}
 -- Stand-in for the theme's active border: a gradient table, exactly the shape
 -- Hyprland's hl.get_config returns (colors as AARRGGBB hex strings + angle).
 local THEME_BORDER = { angle = 45.0, colors = { "0xEE26A269", "0xEE2EC27E" } }
+-- What hl.get_config("general:col.active_border") reports. A theme that never set
+-- the key reports nil; a scenario flips this to nil to exercise that.
+local border_config = THEME_BORDER
 
 hl = {
   get_windows = function() return windows end,
@@ -94,7 +97,7 @@ hl = {
   end,
   get_config = function(name)
     if name == "debug.damage_tracking" then return damage_current end
-    if name == "general:col.active_border" then return THEME_BORDER end
+    if name == "general:col.active_border" then return border_config end
     return nil
   end,
   timer = function(fn) timers[#timers + 1] = fn end,
@@ -156,6 +159,7 @@ local function reset()
   damage_calls = {}
   border_calls = {}
   damage_current = 2
+  border_config = THEME_BORDER
   timers = {}
   handlers = {}
   os.remove(shader_file)
@@ -419,6 +423,24 @@ do
   flush_timers()
   check(damage_current == 2,
         "window.active alone restores damage tracking when the focused pinned window closes")
+end
+
+-- 17. An UNSET theme border is cleared on restore, not left forced. When the theme
+-- never set general:col.active_border, get_config returns nil; leaving contrast
+-- must clear the forced yellow border rather than silently keep it.
+do
+  local inv = reset()
+  border_config = nil                  -- the theme declares no active border
+
+  inv.set("desktop", "contrast")
+  check(#border_calls == 1 and border_calls[1] == "rgba(ffff00ff)",
+        "unset border: contrast still forces the bright-yellow border")
+
+  inv.set("desktop", "off")
+  check(#border_calls == 2,
+        "unset border: leaving contrast writes the cleared border back")
+  check(border_calls[2] == "",
+        "unset border: the forced border is CLEARED (empty sentinel), not left yellow")
 end
 
 -- ── summary ─────────────────────────────────────────────────────────────────

@@ -110,7 +110,16 @@ end
 -- shader — seeing a bright colour against the dark desktop around the window —
 -- renders as pure yellow; the theme's own border (gradient or solid, whatever it
 -- is) is put back when the last contrast effect goes away.
+--
+-- A theme may leave general:col.active_border UNSET, in which case
+-- hl.get_config returns nil and there is no value to write back. On restore that
+-- case must still clear the forced border — writing nil is impossible and writing
+-- nothing leaves the forced yellow in place for the rest of the session, so the
+-- fact that the key was unset is recorded and the explicit clear sentinel below is
+-- written instead.
+local UNSET_BORDER = ""  -- empty value: Hyprland resets the key to its own default
 local saved_border = nil
+local border_was_unset = false
 local border_forced = false
 
 local function contrast_active()
@@ -130,13 +139,20 @@ local function sync_border()
 
   if want and not border_forced then
     saved_border = hl.get_config("general:col.active_border")
+    border_was_unset = (saved_border == nil)
     hl.config({ general = { col = { active_border = "rgba(ffff00ff)" } } })
     border_forced = true
   elseif not want and border_forced then
-    if saved_border ~= nil then
+    -- Put the theme's own border back. When the theme never set the key there is
+    -- nothing to write back, so clear it with the sentinel rather than leaving the
+    -- forced yellow border in place.
+    if border_was_unset then
+      hl.config({ general = { col = { active_border = UNSET_BORDER } } })
+    else
       hl.config({ general = { col = { active_border = saved_border } } })
     end
     saved_border = nil
+    border_was_unset = false
     border_forced = false
   end
 end
