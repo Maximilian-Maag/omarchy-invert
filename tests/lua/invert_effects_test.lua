@@ -375,25 +375,50 @@ do
   check(#border_calls == 0, "invert leaves the active border alone")
 end
 
--- 15. Closing the last pinned window restores damage tracking via the poll and
--- window.active paths (the desktop-off path is covered by scenario 10).
+-- 15. The POLL path restores damage tracking. The pinned window is NOT the
+-- focused one when it closes, so window.active never fires for it — only the poll
+-- timer notices the pin set emptied. (Scenario 10 covers the desktop-off path,
+-- scenario 16 the window.active path.)
+do
+  local inv = reset()
+  local pinned_win = mkwin("0xaa", 0, 0, 400, 300)
+  local other = mkwin("0xbb", 500, 0, 400, 300)
+  windows = { pinned_win, other }
+  active = pinned_win
+  inv.set("window", "invert")          -- pin the focused window
+  check(damage_current == 0, "poll: pinning a window suspends damage tracking")
+
+  -- Focus moves to the other window; the pinned window stays pinned but unfocused.
+  active = other
+  handlers["window.active"]()
+  check(damage_current == 0,
+        "poll: a focus change never restores while a window stays pinned")
+
+  -- The pinned (now unfocused) window closes. Firing ONLY the poll timer — no
+  -- window.active event for the closed window — must still restore damage tracking.
+  windows = { other }
+  flush_timers()                       -- poll notices, prunes the pin set
+  flush_timers()                       -- the settle timer it scheduled now fires
+  check(damage_current == 2,
+        "poll alone restores damage tracking when the last pinned window closes")
+end
+
+-- 16. The window.active path restores damage tracking when the closed window WAS
+-- the focused one (its close fires window.active, whose handler re-settles).
 do
   local inv = reset()
   local w = mkwin("0xaa", 0, 0, 400, 300)
   windows = { w }
   active = w
   inv.set("window", "invert")
-  check(damage_current == 0, "pinning a window suspends damage tracking")
+  check(damage_current == 0, "window.active: pinning a window suspends damage tracking")
 
-  -- The window closes: the poll timer notices (prunes the pin set) and the
-  -- active-window handler fires because the closed window was focused.
+  -- The pinned window was focused and closes: window.active fires for it.
   windows = {}
-  flush_timers()
   handlers["window.active"]()
-  -- The settle timer scheduled on those paths now fires.
   flush_timers()
   check(damage_current == 2,
-        "closing the last pinned window restores damage tracking via poll/window.active")
+        "window.active alone restores damage tracking when the focused pinned window closes")
 end
 
 -- ── summary ─────────────────────────────────────────────────────────────────
