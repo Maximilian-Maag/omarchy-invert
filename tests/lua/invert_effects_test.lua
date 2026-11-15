@@ -375,6 +375,27 @@ do
   check(#border_calls == 0, "invert leaves the active border alone")
 end
 
+-- 15. Closing the last pinned window restores damage tracking via the poll and
+-- window.active paths (the desktop-off path is covered by scenario 10).
+do
+  local inv = reset()
+  local w = mkwin("0xaa", 0, 0, 400, 300)
+  windows = { w }
+  active = w
+  inv.set("window", "invert")
+  check(damage_current == 0, "pinning a window suspends damage tracking")
+
+  -- The window closes: the poll timer notices (prunes the pin set) and the
+  -- active-window handler fires because the closed window was focused.
+  windows = {}
+  flush_timers()
+  handlers["window.active"]()
+  -- The settle timer scheduled on those paths now fires.
+  flush_timers()
+  check(damage_current == 2,
+        "closing the last pinned window restores damage tracking via poll/window.active")
+end
+
 -- ── summary ─────────────────────────────────────────────────────────────────
 if scratch then os.execute("rm -rf '" .. scratch .. "'") end
 io.write(string.format("\n%d passed, %d failed\n", passed, failed))

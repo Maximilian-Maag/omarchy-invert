@@ -58,6 +58,9 @@ local polling = false
 local applied = nil
 local damage_tracking = nil
 local restore_pending = false
+-- Forward-declared: poll() (which runs before the definition below) re-settles
+-- damage tracking when the last pinned window closes.
+local settle_damage_tracking
 
 local function effect_int(effect)
   if effect == "invert" then
@@ -297,7 +300,15 @@ local function poll()
     return
   end
   apply()
-  hl.timer(poll, { timeout = poll_interval, type = "oneshot" })
+  -- Closing the last pinned window is noticed here (apply() prunes the closed
+  -- address and the pin set empties), so damage tracking must be re-settled on
+  -- this path too — else it stays suspended for the rest of the session.
+  settle_damage_tracking()
+  if has_pinned() then
+    hl.timer(poll, { timeout = poll_interval, type = "oneshot" })
+  else
+    polling = false
+  end
 end
 
 local function start_polling()
@@ -323,7 +334,7 @@ local function restore_damage_tracking()
   end
 end
 
-local function settle_damage_tracking()
+settle_damage_tracking = function()
   suspend_damage_tracking()
 
   if has_pinned() or desktop_on() or restore_pending then
@@ -417,6 +428,12 @@ invert.toggle = invert.cycle
 -- outputs, so the shader is regenerated on each.
 local function on_change()
   apply()
+  -- A focus change can be the moment the last pinned window goes away (the
+  -- closed window was active). Only re-settle when an effect was live, so an
+  -- ordinary focus change never toggles damage tracking.
+  if damage_tracking ~= nil then
+    settle_damage_tracking()
+  end
   write_status()
 end
 
