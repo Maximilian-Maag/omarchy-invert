@@ -139,10 +139,10 @@ omarchy plugin add https://github.com/Maximilian-Maag/omarchy-invert
 # 1. Clone
 git clone https://github.com/Maximilian-Maag/omarchy-invert ~/.config/omarchy/plugins/omarchy.invert
 
-# 2. Link the Lua module so Hyprland can require it
-mkdir -p ~/.config/hypr
-cp ~/.config/omarchy/plugins/omarchy.invert/hypr/invert.lua ~/.config/hypr/invert.lua
-# Or symlink: ln -sf ~/.config/omarchy/plugins/omarchy.invert/hypr/invert.lua ~/.config/hypr/invert.lua
+# 2. Link the Lua module where require("Maximilian-Maag.invert") finds it
+mkdir -p ~/.config/Maximilian-Maag
+cp ~/.config/omarchy/plugins/omarchy.invert/hypr/invert.lua ~/.config/Maximilian-Maag/invert.lua
+# Or symlink: ln -sf ~/.config/omarchy/plugins/omarchy.invert/hypr/invert.lua ~/.config/Maximilian-Maag/invert.lua
 
 # 3. Put the CLI binary on PATH
 sudo cp ~/.config/omarchy/plugins/omarchy.invert/bin/omarchy-toggle-invert /usr/local/bin/
@@ -150,7 +150,7 @@ sudo chmod +x /usr/local/bin/omarchy-toggle-invert
 
 # 4. Load the module from your Hyprland config
 # Add to ~/.config/hypr/omarchy.lua (or any file Hyprland loads):
-#   require("omarchy.invert")
+#   require("Maximilian-Maag.invert")
 
 # 5. Add keybindings to ~/.config/hypr/bindings.lua:
 #   o.bind("SUPER + CTRL + U",       "Cycle focused window: off / invert / high-contrast", "omarchy-toggle-invert window")

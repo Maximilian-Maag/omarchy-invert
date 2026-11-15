@@ -24,7 +24,7 @@
       }
     ],
     "hyprland": {
-      "require": "omarchy.invert"
+      "require": "Maximilian-Maag.invert"
     },
     "bindings": [
       {
